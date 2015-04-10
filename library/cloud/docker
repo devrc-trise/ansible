@@ -358,7 +358,7 @@ class DockerManager:
                 if len(parts) == 2:
                     self.volumes[parts[1]] = {}
                     self.binds[parts[0]] = parts[1]
-                # with bind mode 
+                # with bind mode
                 elif len(parts) == 3:
                     if parts[2] not in ['ro', 'rw']:
                         self.module.fail_json(msg='bind mode needs to either be "ro" or "rw"')
@@ -653,10 +653,55 @@ def check_dependencies(module):
         if not HAS_NEW_ENOUGH_DOCKER_PY:
             module.fail_json(msg="The Ansible Docker module requires `docker-py` >= 0.3.0.")
 
+def generate_footprint(module):
+    command = ['docker', 'run']
+    if module.params.get('detach'):
+        command.append('-d')
+
+    if module.params.get('links'):
+        links = module.params.get('links')
+        for link in links:
+            command.extend(['--link', link])
+    if module.params.get('ports'):
+        ports = module.params.get('ports')
+        for port in ports:
+            command.extend(['-p', port])
+
+    if module.params.get('env'):
+        env = module.params.get('env')
+        for environ in env:
+            command.extend(['-e', "%s" % environ])
+
+    if module.params.get('volumes_from'):
+        volumes_from = module.params.get('volumes_from')
+        for container in volumes_from:
+            command.extend(['--volumes-from', container])
+
+    if module.params.get('volumes'):
+        volumes = module.params.get('volumes')
+        for volume in volumes:
+            command.extend(['-v', volume])
+
+    if module.params.get('publish_all_ports'):
+        command.append('-P')
+
+    if module.params.get('name'):
+        name = module.params.get('name')
+        command.extend(['--name',name])
+
+    command.append(module.params.get('image'))
+
+    if module.params.get('command'):
+        cmd = module.params.get('command')
+        command.append(cmd)
+
+    with open(module.params.get('footprint_dest'), 'w') as f:
+        f.write(' '.join(command))
 
 def main():
     module = AnsibleModule(
         argument_spec = dict(
+            footprint_dest  = dict(required=False, default=None),
             count           = dict(default=1),
             image           = dict(required=True),
             command         = dict(required=False, default=None),
@@ -737,6 +782,9 @@ def main():
                 facts = manager.get_running_containers()
             else:
                 facts = manager.get_deployed_containers()
+
+            if module.params.get('footprint_dest'):
+                generate_footprint(module)
 
         # stop and remove containers
         elif state == "absent":
